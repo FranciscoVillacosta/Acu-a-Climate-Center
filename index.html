@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Clima Coahuila – Completo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+ body { font-family: Arial, sans-serif; margin:0; background:#eef2f3; }
+ header { background:#004e92; color:white; padding:20px; font-size:26px; text-align:center; }
+ .container { width:95%; max-width:1100px; margin:20px auto; background:white; border-radius:12px; padding:20px; box-shadow:0 0 10px rgba(0,0,0,0.15); }
+ select { width:100%; padding:12px; border-radius:8px; font-size:16px; margin-bottom:20px; }
+ .card { background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #004e92; }
+ h2 { margin:0 0 10px 0; color:#004e92; }
+ table { width:100%; border-collapse:collapse; margin-top:10px; }
+ th,td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
+ th { background:#004e92; color:white; }
+ .export-buttons { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+ button { padding:10px 20px; background:#004e92; color:white; border:none; border-radius:6px; cursor:pointer; }
+ button:hover { background:#00386d; }
+ @media(max-width:600px){ table{font-size:12px;} }
+</style>
+</head>
+<body>
+<header>CdAcuña Climate Center</header>
+<div class="container">
+
+ <!-- SELECT -->
+ <select id="municipio"></select>
+
+ <!-- BOTONES -->
+ <div class="export-buttons">
+   <button onclick="exportExcel()">Excel Municipio</button>
+   <button onclick="exportPDF()">PDF Municipio</button>
+   <button onclick="exportAllExcel()">Excel Todos</button>
+   <button onclick="exportAllPDF()">PDF Todos</button>
+ </div>
+
+ <!-- INFO -->
+ <div id="info"></div>
+ <div id="daily"></div>
+ <div id="hourly"></div>
+ <canvas id="chart" style="width:100%;max-width:600px;margin-top:20px;"></canvas>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const municipios = [
+ {n:"Abasolo",lat:27.2,lon:-101.4}, {n:"Acuña",lat:29.3,lon:-101.0},
+ {n:"Allende",lat:28.3,lon:-100.8}, {n:"Arteaga",lat:25.43,lon:-100.85},
+ {n:"Candela",lat:26.8,lon:-100.7}, {n:"Castaños",lat:26.8,lon:-101.4},
+ {n:"Cuatrociénegas",lat:26.98,lon:-102.05}, {n:"Escobedo",lat:27.3,lon:-101.4},
+ {n:"Francisco I. Madero",lat:25.77,lon:-103.27}, {n:"Frontera",lat:26.9,lon:-101.4},
+ {n:"Gral. Cepeda",lat:25.38,lon:-101.5}, {n:"Guerrero",lat:28.2,lon:-100.9},
+ {n:"Hidalgo",lat:29.0,lon:-100.9}, {n:"Jiménez",lat:27.0,lon:-101.1},
+ {n:"Juárez",lat:27.1,lon:-100.7}, {n:"Lamadrid",lat:27.0,lon:-101.6},
+ {n:"Matamoros",lat:25.53,lon:-103.25}, {n:"Monclova",lat:26.9,lon:-101.4},
+ {n:"Morelos",lat:28.4,lon:-100.9}, {n:"Múzquiz",lat:27.88,lon:-101.22},
+ {n:"Nadadores",lat:27.03,lon:-101.58}, {n:"Nava",lat:28.42,lon:-100.77},
+ {n:"Ocampo",lat:27.3,lon:-102.4}, {n:"Parras",lat:25.44,lon:-102.18},
+ {n:"Piedras Negras",lat:28.7,lon:-100.52}, {n:"Progreso",lat:27.45,lon:-101.01},
+ {n:"Ramos Arizpe",lat:25.55,lon:-100.95}, {n:"Sabinas",lat:27.85,lon:-101.45},
+ {n:"Sacramento",lat:26.9,lon:-101.85}, {n:"Saltillo",lat:25.42,lon:-101.0},
+ {n:"San Buenaventura",lat:27.17,lon:-101.53}, {n:"San Juan de Sabinas",lat:27.95,lon:-101.23},
+ {n:"San Pedro",lat:25.76,lon:-103.0}, {n:"Sierra Mojada",lat:27.28,lon:-103.6},
+ {n:"Torreón",lat:25.54,lon:-103.45}, {n:"Viesca",lat:25.33,lon:-102.81},
+ {n:"Villa Unión",lat:28.22,lon:-100.72}, {n:"Zaragoza",lat:28.48,lon:-100.92}
+];
+
+let select = document.getElementById("municipio");
+select.innerHTML = "<option value=''>Selecciona un municipio…</option>" +
+ municipios.map(m=>`<option data-lat='${m.lat}' data-lon='${m.lon}'>${m.n}</option>`).join("");
+
+let lastData = null;
+
+select.addEventListener("change", async ()=>{
+ let opt = select.options[select.selectedIndex];
+ if(!opt.value) return;
+
+ let lat = opt.dataset.lat;
+ let lon = opt.dataset.lon;
+
+ let api = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+
+ let res = await fetch(api);
+ let data = await res.json();
+ lastData = data;
+
+ renderCurrent(data);
+ renderDaily(data);
+ renderHourly(data);
+ drawChart(data);
+});
+
+function renderCurrent(d){
+ let c = d.current_weather;
+ document.getElementById("info").innerHTML = `<div class='card'>
+ <h2>Clima Actual</h2>
+ <p><b>Temperatura:</b> ${c.temperature}°C</p>
+ <p><b>Viento:</b> ${c.windspeed} km/h</p>
+ <p><b>Hora:</b> ${c.time}</p></div>`;
+}
+
+function renderDaily(d){
+ let x = d.daily;
+ let h = `<div class='card'><h2>Pronóstico Diario</h2>
+ <table><tr><th>Día</th><th>Máx</th><th>Mín</th><th>Lluvia %</th><th>Viento</th></tr>`;
+ for(let i=0;i<x.time.length;i++){
+    h+=`<tr><td>${x.time[i]}</td><td>${x.temperature_2m_max[i]}°C</td>
+ <td>${x.temperature_2m_min[i]}°C</td><td>${x.precipitation_probability_max[i]}%</td>
+ <td>${x.windspeed_10m_max[i]} km/h</td></tr>`;
+ }
+ h += "</table></div>";
+ document.getElementById("daily").innerHTML = h;
+}
+
+function renderHourly(d){
+ let h = d.hourly;
+ let out = `<div class='card'><h2>Próximas 12 Horas</h2>
+ <table><tr><th>Hora</th><th>Temp</th><th>Lluvia %</th><th>Viento</th></tr>`;
+ for(let i=0;i<12;i++){
+   out+=`<tr><td>${h.time[i].slice(11,16)}</td><td>${h.temperature_2m[i]}°C</td>
+ <td>${h.precipitation_probability[i]}%</td><td>${h.windspeed_10m[i]} km/h</td></tr>`;
+ }
+ out += "</table></div>";
+ document.getElementById("hourly").innerHTML = out;
+}
+
+function drawChart(d){
+ let ctx = document.getElementById("chart");
+ let t = d.daily.temperature_2m_max;
+ new Chart(ctx,{ type:"line", data:{ labels:d.daily.time, datasets:[{ label:"Temp Máx", data:t }] } });
+}
+
+function exportExcel(){
+ if(!lastData) return alert("Selecciona un municipio.");
+ let wb = XLSX.utils.book_new();
+ let daily = lastData.daily;
+ let arr = [["Fecha","Máx","Mín","Lluvia %","Viento"]];
+ for(let i=0;i<daily.time.length;i++)
+   arr.push([
+       daily.time[i],
+       daily.temperature_2m_max[i],
+       daily.temperature_2m_min[i],
+       daily.precipitation_probability_max[i],
+       daily.windspeed_10m_max[i]
+    ]);
+ let ws = XLSX.utils.aoa_to_sheet(arr);
+ XLSX.utils.book_append_sheet(wb, ws, "Diario");
+ XLSX.writeFile(wb, "clima.xlsx");
+}
+
+function exportPDF(){
+ if(!lastData) return alert("Selecciona un municipio.");
+ const { jsPDF } = window.jspdf;
+ let pdf = new jsPDF();
+ pdf.text("Reporte de Clima", 10,10);
+ pdf.text("Municipio: "+select.value, 10,20);
+ pdf.save("clima.pdf");
+}
+
+/* ---------------------------------------------------------------
+   REPORTES DE TODOS LOS MUNICIPIOS
+----------------------------------------------------------------*/
+
+async function exportAllExcel() {
+    let wb = XLSX.utils.book_new();
+    let arr = [["Municipio","Fecha","Máx","Mín","Lluvia %","Viento"]];
+
+    for (let m of municipios) {
+        let api = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max`;
+        let res = await fetch(api);
+        let data = await res.json();
+        let d = data.daily;
+
+        for (let i = 0; i < d.time.length; i++) {
+            arr.push([
+                m.n,
+                d.time[i],
+                d.temperature_2m_max[i],
+                d.temperature_2m_min[i],
+                d.precipitation_probability_max[i],
+                d.windspeed_10m_max[i]
+            ]);
+        }
+    }
+
+    let ws = XLSX.utils.aoa_to_sheet(arr);
+    XLSX.utils.book_append_sheet(wb, ws, "Clima Coahuila");
+    XLSX.writeFile(wb, "clima_coahuila_todos.xlsx");
+}
+
+
+async function exportAllPDF() {
+    const { jsPDF } = window.jspdf;
+    let pdf = new jsPDF();
+    let y = 15;
+
+    pdf.setFontSize(16);
+    pdf.text("Reporte Climático – Todos los Municipios de Coahuila", 10, y);
+    y += 10;
+
+    for (let m of municipios) {
+        let api = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max`;
+        let res = await fetch(api);
+        let data = await res.json();
+        let d = data.daily;
+
+        pdf.setFontSize(14);
+        pdf.text(`Municipio: ${m.n}`, 10, y);
+        y += 7;
+
+        pdf.setFontSize(11);
+
+        for (let i = 0; i < d.time.length; i++) {
+            pdf.text(
+                `${d.time[i]} | Max: ${d.temperature_2m_max[i]}°C  | Min: ${d.temperature_2m_min[i]}°C  | Lluvia: ${d.precipitation_probability_max[i]}%  | Viento: ${d.windspeed_10m_max[i]} km/h`,
+                10,
+                y
+            );
+            y += 6;
+
+            if (y > 280) { pdf.addPage(); y = 15; }
+        }
+
+        y += 8;
+        if (y > 260) { pdf.addPage(); y = 15; }
+    }
+
+    pdf.save("clima_coahuila_todos.pdf");
+}
+
+</script>
+</body>
+</html>
