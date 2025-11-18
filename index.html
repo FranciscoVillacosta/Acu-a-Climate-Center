@@ -17,24 +17,22 @@
  .export-buttons { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
  button { padding:10px 20px; background:#004e92; color:white; border:none; border-radius:6px; cursor:pointer; }
  button:hover { background:#00386d; }
+ #status { margin-top:10px; font-style:italic; color:#333; }
  @media(max-width:600px){ table{font-size:12px;} }
 </style>
 </head>
 <body>
-<header>CdAcuña Climate Center</header>
+<header>Clima en los Municipios de Coahuila</header>
 <div class="container">
 
- <!-- SELECT -->
  <select id="municipio"></select>
 
- <!-- BOTONES -->
  <div class="export-buttons">
-  
-   <button onclick="exportAllExcel()">EXCEL</button>
-   <button onclick="exportAllPDF()">PDF</button>
+   <button onclick="exportExcelAll()">Exportar Excel (Todos)</button>
+   <button onclick="exportPDFAll()">Exportar PDF (Todos)</button>
  </div>
+ <div id="status">Selecciona un municipio para ver sus datos.</div>
 
- <!-- INFO -->
  <div id="info"></div>
  <div id="daily"></div>
  <div id="hourly"></div>
@@ -75,6 +73,7 @@ select.innerHTML = "<option value=''>Selecciona un municipio…</option>" +
 
 let lastData = null;
 
+// ------------------ SELECCIONAR MUNICIPIO ------------------
 select.addEventListener("change", async ()=>{
  let opt = select.options[select.selectedIndex];
  if(!opt.value) return;
@@ -82,18 +81,22 @@ select.addEventListener("change", async ()=>{
  let lat = opt.dataset.lat;
  let lon = opt.dataset.lon;
 
- let api = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+ const status = document.getElementById("status");
+ status.innerText = `Cargando datos de ${opt.value}...`;
 
+ let api = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto&forecast_days=1&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
  let res = await fetch(api);
  let data = await res.json();
  lastData = data;
 
  renderCurrent(data);
- renderDaily(data);
  renderHourly(data);
  drawChart(data);
+
+ status.innerText = `Datos de ${opt.value} cargados.`;
 });
 
+// ------------------ RENDERIZADO ------------------
 function renderCurrent(d){
  let c = d.current_weather;
  document.getElementById("info").innerHTML = `<div class='card'>
@@ -103,24 +106,11 @@ function renderCurrent(d){
  <p><b>Hora:</b> ${c.time}</p></div>`;
 }
 
-function renderDaily(d){
- let x = d.daily;
- let h = `<div class='card'><h2>Pronóstico Diario</h2>
- <table><tr><th>Día</th><th>Máx</th><th>Mín</th><th>Lluvia %</th><th>Viento</th></tr>`;
- for(let i=0;i<x.time.length;i++){
-    h+=`<tr><td>${x.time[i]}</td><td>${x.temperature_2m_max[i]}°C</td>
- <td>${x.temperature_2m_min[i]}°C</td><td>${x.precipitation_probability_max[i]}%</td>
- <td>${x.windspeed_10m_max[i]} km/h</td></tr>`;
- }
- h += "</table></div>";
- document.getElementById("daily").innerHTML = h;
-}
-
 function renderHourly(d){
  let h = d.hourly;
- let out = `<div class='card'><h2>Próximas 12 Horas</h2>
+ let out = `<div class='card'><h2>Próximas 24 Horas</h2>
  <table><tr><th>Hora</th><th>Temp</th><th>Lluvia %</th><th>Viento</th></tr>`;
- for(let i=0;i<12;i++){
+ for(let i=0;i<24;i++){
    out+=`<tr><td>${h.time[i].slice(11,16)}</td><td>${h.temperature_2m[i]}°C</td>
  <td>${h.precipitation_probability[i]}%</td><td>${h.windspeed_10m[i]} km/h</td></tr>`;
  }
@@ -130,108 +120,73 @@ function renderHourly(d){
 
 function drawChart(d){
  let ctx = document.getElementById("chart");
- let t = d.daily.temperature_2m_max;
- new Chart(ctx,{ type:"line", data:{ labels:d.daily.time, datasets:[{ label:"Temp Máx", data:t }] } });
+ let t = d.hourly.temperature_2m.slice(0,24);
+ let labels = d.hourly.time.slice(0,24).map(x=>x.slice(11,16));
+ new Chart(ctx,{ type:"line", data:{ labels:labels, datasets:[{ label:"Temp °C", data:t, borderColor:"#004e92", tension:0.3 }] } });
 }
 
-function exportExcel(){
- if(!lastData) return alert("Selecciona un municipio.");
- let wb = XLSX.utils.book_new();
- let daily = lastData.daily;
- let arr = [["Fecha","Máx","Mín","Lluvia %","Viento"]];
- for(let i=0;i<daily.time.length;i++)
-   arr.push([
-       daily.time[i],
-       daily.temperature_2m_max[i],
-       daily.temperature_2m_min[i],
-       daily.precipitation_probability_max[i],
-       daily.windspeed_10m_max[i]
-    ]);
- let ws = XLSX.utils.aoa_to_sheet(arr);
- XLSX.utils.book_append_sheet(wb, ws, "Diario");
- XLSX.writeFile(wb, "clima.xlsx");
+// ------------------ EXPORTAR TODOS LOS MUNICIPIOS ------------------
+async function fetchAllData() {
+  const status = document.getElementById("status");
+  status.innerText = "Obteniendo datos de todos los municipios, espera...";
+  const results = [];
+  for(let i=0;i<municipios.length;i++){
+    const m = municipios[i];
+    status.innerText = `Obteniendo datos: ${i+1}/${municipios.length} - ${m.n}`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=1&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+    const res = await fetch(url);
+    const data = await res.json();
+    results.push({municipio: m.n, data});
+  }
+  status.innerText = "Todos los datos cargados!";
+  return results;
 }
 
-function exportPDF(){
- if(!lastData) return alert("Selecciona un municipio.");
- const { jsPDF } = window.jspdf;
- let pdf = new jsPDF();
- pdf.text("Reporte de Clima", 10,10);
- pdf.text("Municipio: "+select.value, 10,20);
- pdf.save("clima.pdf");
-}
+// ---------- EXPORTAR EXCEL ----------
+async function exportExcelAll() {
+  const allData = await fetchAllData();
+  const wb = XLSX.utils.book_new();
 
-/* ---------------------------------------------------------------
-   REPORTES DE TODOS LOS MUNICIPIOS
-----------------------------------------------------------------*/
-
-async function exportAllExcel() {
-    let wb = XLSX.utils.book_new();
-    let arr = [["Municipio","Fecha","Máx","Mín","Lluvia %","Viento"]];
-
-    for (let m of municipios) {
-        let api = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max`;
-        let res = await fetch(api);
-        let data = await res.json();
-        let d = data.daily;
-
-        for (let i = 0; i < d.time.length; i++) {
-            arr.push([
-                m.n,
-                d.time[i],
-                d.temperature_2m_max[i],
-                d.temperature_2m_min[i],
-                d.precipitation_probability_max[i],
-                d.windspeed_10m_max[i]
-            ]);
-        }
+  allData.forEach(item => {
+    const h = item.data.hourly;
+    const arr = [["Hora","Temperatura","Lluvia %","Viento"]];
+    for(let i=0;i<24;i++){
+      arr.push([h.time[i].slice(11,16), h.temperature_2m[i], h.precipitation_probability[i], h.windspeed_10m[i]]);
     }
+    const ws = XLSX.utils.aoa_to_sheet(arr);
+    XLSX.utils.book_append_sheet(wb, ws, item.municipio);
+  });
 
-    let ws = XLSX.utils.aoa_to_sheet(arr);
-    XLSX.utils.book_append_sheet(wb, ws, "Clima Coahuila");
-    XLSX.writeFile(wb, "clima_coahuila_todos.xlsx");
+  XLSX.writeFile(wb, "clima_todos_municipios.xlsx");
 }
 
+// ---------- EXPORTAR PDF ----------
+async function exportPDFAll() {
+  const allData = await fetchAllData();
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+  let y = 10;
 
-async function exportAllPDF() {
-    const { jsPDF } = window.jspdf;
-    let pdf = new jsPDF();
-    let y = 15;
+  pdf.setFontSize(18);
+  pdf.text("Reporte de Clima – Todos los Municipios", 10, y); y+=10;
 
-    pdf.setFontSize(16);
-    pdf.text("Reporte Climático – Todos los Municipios de Coahuila", 10, y);
-    y += 10;
+  for(let i=0;i<allData.length;i++){
+    const item = allData[i];
+    pdf.setFontSize(14);
+    pdf.text(item.municipio, 10, y); y+=6;
 
-    for (let m of municipios) {
-        let api = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max`;
-        let res = await fetch(api);
-        let data = await res.json();
-        let d = data.daily;
-
-        pdf.setFontSize(14);
-        pdf.text(`Municipio: ${m.n}`, 10, y);
-        y += 7;
-
-        pdf.setFontSize(11);
-
-        for (let i = 0; i < d.time.length; i++) {
-            pdf.text(
-                `${d.time[i]} | Max: ${d.temperature_2m_max[i]}°C  | Min: ${d.temperature_2m_min[i]}°C  | Lluvia: ${d.precipitation_probability_max[i]}%  | Viento: ${d.windspeed_10m_max[i]} km/h`,
-                10,
-                y
-            );
-            y += 6;
-
-            if (y > 280) { pdf.addPage(); y = 15; }
-        }
-
-        y += 8;
-        if (y > 260) { pdf.addPage(); y = 15; }
+    const h = item.data.hourly;
+    pdf.setFontSize(10);
+    for(let j=0;j<24;j++){
+      pdf.text(`${h.time[j].slice(11,16)} | Temp: ${h.temperature_2m[j]}°C | Lluvia: ${h.precipitation_probability[j]}% | Viento: ${h.windspeed_10m[j]} km/h`, 10, y);
+      y += 5;
+      if(y > 280){ pdf.addPage(); y = 10; }
     }
+    y += 8;
+  }
 
-    pdf.save("clima_coahuila_todos.pdf");
+  pdf.save("clima_todos_municipios.pdf");
 }
-
 </script>
 </body>
 </html>
