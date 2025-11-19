@@ -28,21 +28,22 @@
  <select id="municipio"></select>
 
  <div class="export-buttons">
-   <button onclick="exportExcelAll()">Exportar Excel (Todos)</button>
-   <button onclick="exportPDFAll()">Exportar PDF (Todos)</button>
+   <button onclick="exportExcelDays()">Exportar TODOS (Días) - Excel</button>
+   <button onclick="exportPDFDays()">Exportar TODOS (Días) - PDF</button>
+   <button onclick="exportExcelHours()">Exportar TODOS (Horas) - Excel</button>
+   <button onclick="exportPDFHours()">Exportar TODOS (Horas) - PDF</button>
  </div>
+
  <div id="status">Selecciona un municipio para ver sus datos.</div>
 
- <div id="info"></div>
+ <div id="current"></div>
  <div id="daily"></div>
  <div id="hourly"></div>
- <canvas id="chart" style="width:100%;max-width:600px;margin-top:20px;"></canvas>
 
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 const municipios = [
@@ -73,120 +74,162 @@ select.innerHTML = "<option value=''>Selecciona un municipio…</option>" +
 
 let lastData = null;
 
-// ------------------ SELECCIONAR MUNICIPIO ------------------
 select.addEventListener("change", async ()=>{
  let opt = select.options[select.selectedIndex];
  if(!opt.value) return;
 
  let lat = opt.dataset.lat;
  let lon = opt.dataset.lon;
-
  const status = document.getElementById("status");
  status.innerText = `Cargando datos de ${opt.value}...`;
 
- let api = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto&forecast_days=1&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+ let api = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto&forecast_days=7&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
  let res = await fetch(api);
  let data = await res.json();
  lastData = data;
 
  renderCurrent(data);
+ renderDaily(data);
  renderHourly(data);
- drawChart(data);
 
  status.innerText = `Datos de ${opt.value} cargados.`;
 });
 
-// ------------------ RENDERIZADO ------------------
+// --- Render Clima Actual ---
 function renderCurrent(d){
- let c = d.current_weather;
- document.getElementById("info").innerHTML = `<div class='card'>
+ const c = d.current_weather;
+ document.getElementById("current").innerHTML = `<div class='card'>
  <h2>Clima Actual</h2>
  <p><b>Temperatura:</b> ${c.temperature}°C</p>
  <p><b>Viento:</b> ${c.windspeed} km/h</p>
- <p><b>Hora:</b> ${c.time}</p></div>`;
+ <p><b>Hora:</b> ${c.time}</p>
+ </div>`;
 }
 
+// --- Render Pronóstico por Días ---
+function renderDaily(d){
+ const daily = d.daily;
+ let out = `<div class='card'><h2>Pronóstico 7 Días</h2>
+ <table><tr><th>Fecha</th><th>Temp Máx (°C)</th><th>Temp Min (°C)</th><th>Precipitación (%)</th><th>Viento Máx (km/h)</th></tr>`;
+ for(let i=0;i<daily.time.length;i++){
+   out+=`<tr>
+   <td>${daily.time[i]}</td>
+   <td>${daily.temperature_2m_max[i]}</td>
+   <td>${daily.temperature_2m_min[i]}</td>
+   <td>${daily.precipitation_probability_mean[i]}</td>
+   <td>${daily.windspeed_10m_max[i]}</td>
+   </tr>`;
+ }
+ out += "</table></div>";
+ document.getElementById("daily").innerHTML = out;
+}
+
+// --- Render Pronóstico por Horas ---
 function renderHourly(d){
- let h = d.hourly;
- let out = `<div class='card'><h2>Próximas 24 Horas</h2>
- <table><tr><th>Hora</th><th>Temp</th><th>Lluvia %</th><th>Viento</th></tr>`;
+ const h = d.hourly;
+ let out = `<div class='card'><h2>Pronóstico 24 Horas</h2>
+ <table><tr><th>Hora</th><th>Temp (°C)</th><th>Precipitación (%)</th><th>Viento (km/h)</th></tr>`;
  for(let i=0;i<24;i++){
-   out+=`<tr><td>${h.time[i].slice(11,16)}</td><td>${h.temperature_2m[i]}°C</td>
- <td>${h.precipitation_probability[i]}%</td><td>${h.windspeed_10m[i]} km/h</td></tr>`;
+   out+=`<tr>
+   <td>${h.time[i].slice(11,16)}</td>
+   <td>${h.temperature_2m[i]}</td>
+   <td>${h.precipitation_probability[i]}</td>
+   <td>${h.windspeed_10m[i]}</td>
+   </tr>`;
  }
  out += "</table></div>";
  document.getElementById("hourly").innerHTML = out;
 }
 
-function drawChart(d){
- let ctx = document.getElementById("chart");
- let t = d.hourly.temperature_2m.slice(0,24);
- let labels = d.hourly.time.slice(0,24).map(x=>x.slice(11,16));
- new Chart(ctx,{ type:"line", data:{ labels:labels, datasets:[{ label:"Temp °C", data:t, borderColor:"#004e92", tension:0.3 }] } });
+// ------------------ Exportación Datos Todos Municipios ------------------
+async function fetchAllData(daysOnly=true){
+ const status = document.getElementById("status");
+ status.innerText = `Obteniendo datos de todos los municipios...`;
+ const results = [];
+ for(let i=0;i<municipios.length;i++){
+   const m = municipios[i];
+   status.innerText = `Obteniendo datos: ${i+1}/${municipios.length} - ${m.n}`;
+   const url = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=7&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+   const res = await fetch(url);
+   const data = await res.json();
+   results.push({municipio: m.n, data});
+ }
+ status.innerText = "Todos los datos cargados!";
+ return results;
 }
 
-// ------------------ EXPORTAR TODOS LOS MUNICIPIOS ------------------
-async function fetchAllData() {
-  const status = document.getElementById("status");
-  status.innerText = "Obteniendo datos de todos los municipios, espera...";
-  const results = [];
-  for(let i=0;i<municipios.length;i++){
-    const m = municipios[i];
-    status.innerText = `Obteniendo datos: ${i+1}/${municipios.length} - ${m.n}`;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&current_weather=true&timezone=auto&forecast_days=1&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
-    const res = await fetch(url);
-    const data = await res.json();
-    results.push({municipio: m.n, data});
-  }
-  status.innerText = "Todos los datos cargados!";
-  return results;
+// --- Exportar TODOS (Días) ---
+async function exportExcelDays(){
+ const allData = await fetchAllData();
+ const wb = XLSX.utils.book_new();
+ allData.forEach(item=>{
+   const d = item.data.daily;
+   const arr = [["Fecha","Temp Máx","Temp Min","Precipitación %","Viento Máx"]];
+   for(let i=0;i<d.time.length;i++){
+     arr.push([d.time[i], d.temperature_2m_max[i], d.temperature_2m_min[i], d.precipitation_probability_mean[i], d.windspeed_10m_max[i]]);
+   }
+   const ws = XLSX.utils.aoa_to_sheet(arr);
+   XLSX.utils.book_append_sheet(wb, ws, item.municipio);
+ });
+ XLSX.writeFile(wb,"clima_todos_dias.xlsx");
 }
 
-// ---------- EXPORTAR EXCEL ----------
-async function exportExcelAll() {
-  const allData = await fetchAllData();
-  const wb = XLSX.utils.book_new();
-
-  allData.forEach(item => {
-    const h = item.data.hourly;
-    const arr = [["Hora","Temperatura","Lluvia %","Viento"]];
-    for(let i=0;i<24;i++){
-      arr.push([h.time[i].slice(11,16), h.temperature_2m[i], h.precipitation_probability[i], h.windspeed_10m[i]]);
-    }
-    const ws = XLSX.utils.aoa_to_sheet(arr);
-    XLSX.utils.book_append_sheet(wb, ws, item.municipio);
-  });
-
-  XLSX.writeFile(wb, "clima_todos_municipios.xlsx");
+async function exportPDFDays(){
+ const allData = await fetchAllData();
+ const { jsPDF } = window.jspdf;
+ const pdf = new jsPDF();
+ let y = 10;
+ pdf.setFontSize(18);
+ pdf.text("Clima – Todos Municipios (Días)",10,y); y+=10;
+ allData.forEach(item=>{
+   pdf.setFontSize(14); pdf.text(item.municipio,10,y); y+=6;
+   const d = item.data.daily;
+   pdf.setFontSize(10);
+   for(let i=0;i<d.time.length;i++){
+     pdf.text(`${d.time[i]} | Max: ${d.temperature_2m_max[i]} | Min: ${d.temperature_2m_min[i]} | Lluvia: ${d.precipitation_probability_mean[i]}% | Viento: ${d.windspeed_10m_max[i]} km/h`,10,y);
+     y+=5; if(y>280){pdf.addPage();y=10;}
+   }
+   y+=8;
+ });
+ pdf.save("clima_todos_dias.pdf");
 }
 
-// ---------- EXPORTAR PDF ----------
-async function exportPDFAll() {
-  const allData = await fetchAllData();
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF();
-  let y = 10;
-
-  pdf.setFontSize(18);
-  pdf.text("Reporte de Clima – Todos los Municipios", 10, y); y+=10;
-
-  for(let i=0;i<allData.length;i++){
-    const item = allData[i];
-    pdf.setFontSize(14);
-    pdf.text(item.municipio, 10, y); y+=6;
-
-    const h = item.data.hourly;
-    pdf.setFontSize(10);
-    for(let j=0;j<24;j++){
-      pdf.text(`${h.time[j].slice(11,16)} | Temp: ${h.temperature_2m[j]}°C | Lluvia: ${h.precipitation_probability[j]}% | Viento: ${h.windspeed_10m[j]} km/h`, 10, y);
-      y += 5;
-      if(y > 280){ pdf.addPage(); y = 10; }
-    }
-    y += 8;
-  }
-
-  pdf.save("clima_todos_municipios.pdf");
+// --- Exportar TODOS (Horas) ---
+async function exportExcelHours(){
+ const allData = await fetchAllData();
+ const wb = XLSX.utils.book_new();
+ allData.forEach(item=>{
+   const h = item.data.hourly;
+   const arr = [["Hora","Temp","Precipitación %","Viento"]];
+   for(let i=0;i<24;i++){
+     arr.push([h.time[i].slice(11,16), h.temperature_2m[i], h.precipitation_probability[i], h.windspeed_10m[i]]);
+   }
+   const ws = XLSX.utils.aoa_to_sheet(arr);
+   XLSX.utils.book_append_sheet(wb, ws, item.municipio);
+ });
+ XLSX.writeFile(wb,"clima_todos_horas.xlsx");
 }
+
+async function exportPDFHours(){
+ const allData = await fetchAllData();
+ const { jsPDF } = window.jspdf;
+ const pdf = new jsPDF();
+ let y=10;
+ pdf.setFontSize(18);
+ pdf.text("Clima – Todos Municipios (Horas)",10,y); y+=10;
+ allData.forEach(item=>{
+   pdf.setFontSize(14); pdf.text(item.municipio,10,y); y+=6;
+   const h = item.data.hourly;
+   pdf.setFontSize(10);
+   for(let i=0;i<24;i++){
+     pdf.text(`${h.time[i].slice(11,16)} | Temp: ${h.temperature_2m[i]} | Lluvia: ${h.precipitation_probability[i]}% | Viento: ${h.windspeed_10m[i]} km/h`,10,y);
+     y+=5; if(y>280){pdf.addPage();y=10;}
+   }
+   y+=8;
+ });
+ pdf.save("clima_todos_horas.pdf");
+}
+
 </script>
 </body>
 </html>
