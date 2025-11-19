@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -31,15 +32,14 @@
    <button onclick="exportExcelDaysAll()">Exportar Todos los Dias Excel</button>
    <button onclick="exportPDFDaysAll()">Exportar Todos los Dias PDF</button>
    <button onclick="exportExcelHoursAll()">Exportar Todas Las Horas Excel</button>
-   <button onclick="exportPDFHoursAll()">ExportarTodas Las Horas PDF</button>
+   <button onclick="exportPDFHoursAll()">Exportar Todas Las Horas PDF</button>
  </div>
 
  <div id="status">Selecciona un municipio para ver sus datos.</div>
 
  <div id="current"></div>
  <div id="daily"></div>
- <div id="hourly"></div>
-
+ <!-- Eliminado el renderizado de horas en la pantalla principal -->
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -84,7 +84,10 @@ select.addEventListener("change", async ()=>{
 
  renderCurrent(data);
  renderDaily(data);
- renderHourlyWithMaxMin(data);
+
+ // No mostramos las horas en pantalla
+ // renderHourlyWithMaxMin(data);
+
  status.innerText = `Datos de ${opt.value} cargados.`;
 });
 
@@ -108,22 +111,6 @@ function renderDaily(d){
  }
  out+=`</table></div>`;
  document.getElementById("daily").innerHTML = out;
-}
-
-// ------------------ HORAS CON MAX/MIN ------------------
-function renderHourlyWithMaxMin(d){
- let hourly = d.hourly;
- let temps = hourly.temperature_2m;
- let out = `<div class='card'><h2>Pronóstico Horario (Max/Min)</h2>
- <table><tr><th>Hora</th><th>Temp Máx</th><th>Temp Min</th><th>Lluvia %</th><th>Viento</th></tr>`;
- for(let i=0;i<temps.length;i++){
-   let tempMax = temps[i]; // cada hora
-   let tempMin = temps[i]; // cada hora
-   out+=`<tr><td>${hourly.time[i].slice(11,16)}</td><td>${tempMax}°C</td><td>${tempMin}°C</td>
-   <td>${hourly.precipitation_probability[i]}%</td><td>${hourly.windspeed_10m[i]} km/h</td></tr>`;
- }
- out+=`</table></div>`;
- document.getElementById("hourly").innerHTML = out;
 }
 
 // ------------------ FETCH ALL DATA ------------------
@@ -234,6 +221,44 @@ async function exportPDFHoursAll(){
  pdf.save("clima_horas_todos_municipios.pdf");
 }
 
+</script>
+<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
 </script>
 </body>
 </html>
