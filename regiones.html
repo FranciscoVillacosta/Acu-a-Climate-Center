@@ -8,18 +8,10 @@
  body { font-family: Arial, sans-serif; margin:0; background:#eef2f3; }
  header { background:#004e92; color:white; padding:20px; font-size:26px; text-align:center; }
  .container { width:95%; max-width:1100px; margin:20px auto; background:white; border-radius:12px; padding:20px; box-shadow:0 0 10px rgba(0,0,0,0.15); }
- .card { background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #004e92; }
- h2 { margin:0 0 10px 0; color:#004e92; }
- table { width:100%; border-collapse:collapse; margin-top:10px; }
- th,td { padding:10px; border-bottom:1px solid #ddd; text-align:center; vertical-align:middle; }
- th { background:#004e92; color:white; }
  .export-buttons { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
  button { padding:10px 20px; background:#004e92; color:white; border:none; border-radius:6px; cursor:pointer; }
  button:hover { background:#00386d; }
- #status { margin-top:10px; font-style:italic; color:#333; }
- .hourly-table { overflow-x:auto; }
- .hourly-table table { min-width:800px; }
- @media(max-width:600px){ table{font-size:12px;} }
+ #status { margin-top:10px; font-style:italic; color:#333; font-weight:bold; }
 </style>
 </head>
 <body>
@@ -29,16 +21,10 @@
 
  <div class="export-buttons">
    <button onclick="exportRegionPDF()">Exportar Región PDF</button>
-   <button onclick="exportRegionExcel()">Exportar por Region Excel</button>
+   <button onclick="exportRegionExcel()">Exportar por Región Excel</button>
  </div>
 
-
- <div id="current"></div>
- <div id="daily"></div>
-
- <!-- NUEVAS SECCIONES -->
- <div id="weekly"></div>
- <div id="hourly" class="hourly-table"></div>
+ <div id="status"></div>
 
 </div>
 
@@ -72,47 +58,19 @@ const regiones = {
   "Sureste": ["Saltillo","Ramos Arizpe","Arteaga","Parras"]
 };
 
-// ---------------- TRADUCTOR ----------------
-function traducirCondicion(texto){
-  const dic = {
-    "Sunny":"Soleado","Clear":"Despejado","Partly cloudy":"Parcialmente nublado",
-    "Cloudy":"Nublado","Overcast":"Cubierto","Patchy rain possible":"Posible lluvia ligera",
-    "Light rain":"Lluvia ligera","Moderate rain":"Lluvia moderada","Heavy rain":"Lluvia fuerte",
-    "Thundery outbreaks possible":"Posibles tormentas","Thunderstorm":"Tormenta eléctrica",
-    "Patchy light drizzle":"Llovizna aislada","Patchy light rain":"Lluvia ligera aislada",
-    "Mist":"Neblina","Fog":"Niebla","Haze":"Bruma","Smoke":"Humo"
-  };
-  return dic[texto] || texto;
+// ---------------- OPEN-METEO ----------------
+async function getWeather(lat, lon) {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max` +
+    `&timezone=auto`;
+
+  const res = await fetch(url);
+  return await res.json();
 }
 
-// ---------------- API WEATHER ----------------
-const API_KEY = "ab10eedc8d9f455896834755252011";
-
-async function getWeather(lat, lon, retries = 1) {
-  const url = `https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${lat},${lon}&days=1&aqi=no&alerts=no`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    if (retries > 0) return getWeather(lat, lon, retries - 1);
-    throw err;
-  }
-}
-
-// ---------------- RENDER ACTUAL ----------------
-function renderCurrent(){ document.getElementById("current").innerHTML = ""; }
-
-// ---------------- RENDER DIARIO ----------------
-function renderDaily(){ document.getElementById("daily").innerHTML = ""; }
-
-// ---------------- RENDER 7 DÍAS ----------------
-function render7Days(){ document.getElementById("weekly").innerHTML = ""; }
-
-// ---------------- RENDER HORARIO ----------------
-function renderHourly(){ document.getElementById("hourly").innerHTML = ""; }
-
-// ---------------- EXPORT REGION PDF ----------------
+// ---------------- PDF POR REGIÓN ----------------
 async function exportRegionPDF(){
  const { jsPDF } = window.jspdf;
  const pdf = new jsPDF({unit:'pt', format:'letter'});
@@ -120,7 +78,8 @@ async function exportRegionPDF(){
 
  let y=40;
  pdf.setFontSize(16);
- pdf.text("Clima del Día por Región – Coahuila",40,y); y+=20;
+ pdf.text("Clima del Día por Región – Coahuila (Open-Meteo)",40,y); 
+ y+=20;
 
  for(const regionName of Object.keys(regiones)){
    pdf.setFontSize(14);
@@ -133,15 +92,18 @@ async function exportRegionPDF(){
 
      try{
        status.innerText = `Obteniendo ${muni}...`;
-       const data = await getWeather(info.lat, info.lon);
-       let d = data.forecast.forecastday[0].day;
 
-       const line = `${muni} — Max ${d.maxtemp_c}°C | Min ${d.mintemp_c}°C | Lluvia ${d.daily_chance_of_rain}% | Viento ${d.maxwind_kph} km/h`;
+       const data = await getWeather(info.lat, info.lon);
+       const d = data.daily;
+
+       const line = `${muni} — Max ${d.temperature_2m_max[0]}°C | Min ${d.temperature_2m_min[0]}°C | Lluvia ${d.precipitation_probability_max[0]}% | Viento ${d.windspeed_10m_max[0]} km/h`;
+
        pdf.setFontSize(10);
        pdf.text(line, 48, y);
 
        y += 28;
        if(y > 700){ pdf.addPage(); y = 40; }
+
      }catch(e){}
    }
 
@@ -153,7 +115,7 @@ async function exportRegionPDF(){
  status.innerText = "PDF por región generado.";
 }
 
-// ---------------- EXPORT REGION EXCEL ----------------
+// ---------------- EXCEL POR REGIÓN ----------------
 async function exportRegionExcel(){
   const wb = XLSX.utils.book_new();
   const status = document.getElementById("status");
@@ -167,10 +129,18 @@ async function exportRegionExcel(){
 
       try{
         status.innerText = `Obteniendo ${muni}...`;
-        const data = await getWeather(info.lat, info.lon);
-        let d = data.forecast.forecastday[0].day;
 
-        arr.push([muni, d.maxtemp_c, d.mintemp_c, d.daily_chance_of_rain, d.maxwind_kph]);
+        const data = await getWeather(info.lat, info.lon);
+        const d = data.daily;
+
+        arr.push([
+          muni,
+          d.temperature_2m_max[0],
+          d.temperature_2m_min[0],
+          d.precipitation_probability_max[0],
+          d.windspeed_10m_max[0]
+        ]);
+
       }catch(e){}
     }
 
