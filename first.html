@@ -1,0 +1,265 @@
+
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Clima Coahuila</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+ 
+ header { background:#004e92; color:white; padding:20px; font-size:26px; text-align:center; }
+ .container { width:95%; max-width:1100px; margin:20px auto; background:white; border-radius:12px; padding:20px; box-shadow:0 0 10px rgba(0,0,0,0.15); }
+ select { width:100%; padding:12px; border-radius:8px; font-size:16px; margin-bottom:20px; }
+ .card { background:#f8f9fa; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #004e92; }
+ h2 { margin:0 0 10px 0; color:#004e92; }
+ table { width:100%; border-collapse:collapse; margin-top:10px; }
+ th,td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
+ th { background:#004e92; color:white; }
+ .export-buttons { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+ button { padding:10px 20px; background:#004e92; color:white; border:none; border-radius:6px; cursor:pointer; }
+ button:hover { background:#00386d; }
+ #status { margin-top:10px; font-style:italic; color:#333; }
+ @media(max-width:600px){ table{font-size:12px;} }
+</style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center p-6 text-white">
+<header>Clima Coahuila</header>
+<div class="container">
+
+ <select id="municipio"></select>
+
+ <div class="export-buttons">
+   <button onclick="exportExcelDaysAll()">Exportar  El Pronostico Todos los Dias  En Excel</button>
+   <button onclick="exportPDFDaysAll()">Exportar El Pronostico Todos los Dias  En PDF</button>
+   <button onclick="exportExcelHoursAll()">Exportar  El Pronostico Todas Las Horas  En Excel</button>
+   <button onclick="exportPDFHoursAll()">Exportar El Pronostico De Todas Las Horas En PDF</button>
+ </div>
+
+ <div id="status">Selecciona un municipio para ver sus datos.</div>
+
+ <div id="current"></div>
+ <div id="daily"></div>
+ <!-- Eliminado el renderizado de horas en la pantalla principal -->
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+const municipios = [
+ {n:"Abasolo",lat:27.2,lon:-101.4}, {n:"Acuña",lat:29.3,lon:-101.0}, {n:"Allende",lat:28.3,lon:-100.8},
+ {n:"Arteaga",lat:25.43,lon:-100.85}, {n:"Candela",lat:26.8,lon:-100.7}, {n:"Castaños",lat:26.8,lon:-101.4},
+ {n:"Cuatrociénegas",lat:26.98,lon:-102.05}, {n:"Escobedo",lat:27.3,lon:-101.4}, {n:"Francisco I. Madero",lat:25.77,lon:-103.27},
+ {n:"Frontera",lat:26.9,lon:-101.4}, {n:"Gral. Cepeda",lat:25.38,lon:-101.5}, {n:"Guerrero",lat:28.2,lon:-100.9},
+ {n:"Hidalgo",lat:29.0,lon:-100.9}, {n:"Jiménez",lat:27.0,lon:-101.1}, {n:"Juárez",lat:27.1,lon:-100.7},
+ {n:"Lamadrid",lat:27.0,lon:-101.6}, {n:"Matamoros",lat:25.53,lon:-103.25}, {n:"Monclova",lat:26.9,lon:-101.4},
+ {n:"Morelos",lat:28.4,lon:-100.9}, {n:"Múzquiz",lat:27.88,lon:-101.22}, {n:"Nadadores",lat:27.03,lon:-101.58},
+ {n:"Nava",lat:28.42,lon:-100.77}, {n:"Ocampo",lat:27.3,lon:-102.4}, {n:"Parras",lat:25.44,lon:-102.18},
+ {n:"Piedras Negras",lat:28.7,lon:-100.52}, {n:"Progreso",lat:27.45,lon:-101.01}, {n:"Ramos Arizpe",lat:25.55,lon:-100.95},
+ {n:"Sabinas",lat:27.85,lon:-101.45}, {n:"Sacramento",lat:26.9,lon:-101.85}, {n:"Saltillo",lat:25.42,lon:-101.0},
+ {n:"San Buenaventura",lat:27.17,lon:-101.53}, {n:"San Juan de Sabinas",lat:27.95,lon:-101.23}, {n:"San Pedro",lat:25.76,lon:-103.0},
+ {n:"Sierra Mojada",lat:27.28,lon:-103.6}, {n:"Torreón",lat:25.54,lon:-103.45}, {n:"Viesca",lat:25.33,lon:-102.81},
+ {n:"Villa Unión",lat:28.22,lon:-100.72}, {n:"Zaragoza",lat:28.48,lon:-100.92}
+];
+
+let select = document.getElementById("municipio");
+select.innerHTML = "<option value=''>Selecciona un municipio…</option>" +
+ municipios.map(m=>`<option data-lat='${m.lat}' data-lon='${m.lon}'>${m.n}</option>`).join("");
+
+let lastData = null;
+
+// ------------------ SELECCIONAR MUNICIPIO ------------------
+select.addEventListener("change", async ()=>{
+ let opt = select.options[select.selectedIndex];
+ if(!opt.value) return;
+ let lat = opt.dataset.lat;
+ let lon = opt.dataset.lon;
+ const status = document.getElementById("status");
+ status.innerText = `Cargando datos de ${opt.value}...`;
+
+ let url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&forecast_days=7&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_mean,windspeed_10m_max&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+ let res = await fetch(url);
+ let data = await res.json();
+ lastData = data;
+
+ renderCurrent(data);
+ renderDaily(data);
+
+ // No mostramos las horas en pantalla
+ // renderHourlyWithMaxMin(data);
+
+ status.innerText = `Datos de ${opt.value} cargados.`;
+});
+
+// ------------------ RENDER ------------------
+function renderCurrent(d){
+ let c = d.current_weather;
+ document.getElementById("current").innerHTML = `<div class='card'>
+ <h2>Clima Actual</h2>
+ <p><b>Temperatura:</b> ${c.temperature}°C</p>
+ <p><b>Viento:</b> ${c.windspeed} km/h</p>
+ <p><b>Hora:</b> ${c.time}</p></div>`;
+}
+
+function renderDaily(d){
+ let daily = d.daily;
+ let out = `<div class='card'><h2>Pronóstico Diario</h2>
+ <table><tr><th>Fecha</th><th>Temp Máx</th><th>Temp Min</th><th>Prob. Lluvia %</th><th>Viento Máx km/h</th></tr>`;
+ for(let i=0;i<daily.time.length;i++){
+   out+=`<tr><td>${daily.time[i]}</td><td>${daily.temperature_2m_max[i]}°C</td><td>${daily.temperature_2m_min[i]}°C</td>
+   <td>${daily.precipitation_probability_mean[i]}%</td><td>${daily.windspeed_10m_max[i]}</td></tr>`;
+ }
+ out+=`</table></div>`;
+ document.getElementById("daily").innerHTML = out;
+}
+
+// ------------------ FETCH ALL DATA ------------------
+async function fetchAllDaily(){
+ const status = document.getElementById("status");
+ status.innerText = "Obteniendo datos diarios de todos los municipios...";
+ const results=[];
+ for(let i=0;i<municipios.length;i++){
+   const m=municipios[i];
+   status.innerText=`Obteniendo ${i+1}/${municipios.length} - ${m.n}`;
+   const url=`https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&timezone=auto&forecast_days=7&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_mean,windspeed_10m_max`;
+   const res=await fetch(url);
+   const data=await res.json();
+   results.push({municipio:m.n,data});
+ }
+ status.innerText="Datos diarios de todos los municipios cargados.";
+ return results;
+}
+
+async function fetchAllHourly(){
+ const status = document.getElementById("status");
+ status.innerText = "Obteniendo datos horarios de todos los municipios...";
+ const results=[];
+ for(let i=0;i<municipios.length;i++){
+   const m=municipios[i];
+   status.innerText=`Obteniendo ${i+1}/${municipios.length} - ${m.n}`;
+   const url=`https://api.open-meteo.com/v1/forecast?latitude=${m.lat}&longitude=${m.lon}&timezone=auto&forecast_days=1&hourly=temperature_2m,precipitation_probability,windspeed_10m`;
+   const res=await fetch(url);
+   const data=await res.json();
+   results.push({municipio:m.n,data});
+ }
+ status.innerText="Datos horarios de todos los municipios cargados.";
+ return results;
+}
+
+// ------------------ EXPORT EXCEL / PDF ------------------
+async function exportExcelDaysAll(){
+ const allData = await fetchAllDaily();
+ const wb=XLSX.utils.book_new();
+ allData.forEach(item=>{
+   const d=item.data.daily;
+   const arr=[["Fecha","Temp Máx","Temp Min","Prob. Lluvia %","Viento Máx km/h"]];
+   for(let i=0;i<d.time.length;i++){
+     arr.push([d.time[i],d.temperature_2m_max[i],d.temperature_2m_min[i],d.precipitation_probability_mean[i],d.windspeed_10m_max[i]]);
+   }
+   const ws=XLSX.utils.aoa_to_sheet(arr);
+   XLSX.utils.book_append_sheet(wb,ws,item.municipio);
+ });
+ XLSX.writeFile(wb,"clima_dias_todos_municipios.xlsx");
+}
+
+async function exportPDFDaysAll(){
+ const allData = await fetchAllDaily();
+ const { jsPDF } = window.jspdf;
+ const pdf = new jsPDF();
+ let y=10;
+ pdf.setFontSize(18);
+ pdf.text("Clima Diario – Todos los Municipios",10,y); y+=10;
+ for(let i=0;i<allData.length;i++){
+   const item = allData[i];
+   pdf.setFontSize(14);
+   pdf.text(item.municipio,10,y); y+=6;
+   const d=item.data.daily;
+   pdf.setFontSize(10);
+   for(let j=0;j<d.time.length;j++){
+     pdf.text(`${d.time[j]} | Máx: ${d.temperature_2m_max[j]}°C | Min: ${d.temperature_2m_min[j]}°C | Lluvia: ${d.precipitation_probability_mean[j]}% | Viento: ${d.windspeed_10m_max[j]} km/h`,10,y);
+     y+=5; if(y>280){pdf.addPage();y=10;}
+   }
+   y+=8;
+ }
+ pdf.save("clima_dias_todos_municipios.pdf");
+}
+
+async function exportExcelHoursAll(){
+ const allData = await fetchAllHourly();
+ const wb=XLSX.utils.book_new();
+ allData.forEach(item=>{
+   const h=item.data.hourly;
+   const arr=[["Hora","Temp","Temp","Lluvia %","Viento"]];
+   for(let i=0;i<h.time.length;i++){
+     arr.push([h.time[i].slice(11,16),h.temperature_2m[i],h.temperature_2m[i],h.precipitation_probability[i],h.windspeed_10m[i]]);
+   }
+   const ws=XLSX.utils.aoa_to_sheet(arr);
+   XLSX.utils.book_append_sheet(wb,ws,item.municipio);
+ });
+ XLSX.writeFile(wb,"clima_horas_todos_municipios.xlsx");
+}
+
+async function exportPDFHoursAll(){
+ const allData = await fetchAllHourly();
+ const { jsPDF } = window.jspdf;
+ const pdf = new jsPDF();
+ let y=10;
+ pdf.setFontSize(18);
+ pdf.text("Clima Horario – Todos los Municipios",10,y); y+=10;
+ for(let i=0;i<allData.length;i++){
+   const item = allData[i];
+   pdf.setFontSize(14);
+   pdf.text(item.municipio,10,y); y+=6;
+   const h=item.data.hourly;
+   pdf.setFontSize(10);
+   for(let j=0;j<h.time.length;j++){
+     pdf.text(`${h.time[j].slice(11,16)} | Máx: ${h.temperature_2m[j]}°C | Min: ${h.temperature_2m[j]}°C | Lluvia: ${h.precipitation_probability[j]}% | Viento: ${h.windspeed_10m[j]} km/h`,10,y);
+     y+=5; if(y>280){pdf.addPage();y=10;}
+   }
+   y+=8;
+ }
+ pdf.save("clima_horas_todos_municipios.pdf");
+}
+
+</script>
+<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+</body>
+</html>
