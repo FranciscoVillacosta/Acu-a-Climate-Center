@@ -32,7 +32,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
-// ---------------- MUNICIPIOS ----------------
+// ---------------- MUNICIPIOS (38 COMPLETOS) ----------------
 const municipios = [
  {n:"Abasolo",lat:27.2,lon:-101.4}, {n:"Acuña",lat:29.3,lon:-101.0}, {n:"Allende",lat:28.3,lon:-100.8},
  {n:"Arteaga",lat:25.43,lon:-100.85}, {n:"Candela",lat:26.8,lon:-100.7}, {n:"Castaños",lat:26.8,lon:-101.4},
@@ -49,16 +49,41 @@ const municipios = [
  {n:"Villa Unión",lat:28.22,lon:-100.72}, {n:"Zaragoza",lat:28.48,lon:-100.92}
 ];
 
-// ---------------- REGIONES ----------------
+// ---------------- REGIONES (38 MUNICIPIOS COMPLETOS) ----------------
 const regiones = {
-  "Norte": ["Acuña","Piedras Negras","Nava","Guerrero","Hidalgo","Zaragoza","Morelos","Villa Unión"],
-  "Carbonífera": ["Sabinas","San Juan de Sabinas","Múzquiz","Progreso"],
-  "Centro": ["Monclova","Frontera","Castaños","Candela","Abasolo","Escobedo","Gral. Cepeda","San Buenaventura","Nadadores","Lamadrid","Sacramento","Ocampo","Cuatrociénegas"],
-  "Laguna": ["Torreón","Matamoros","San Pedro","Francisco I. Madero","Viesca"],
-  "Sureste": ["Saltillo","Ramos Arizpe","Arteaga","Parras"]
+  "Norte": [
+    "Acuña","Piedras Negras","Nava",
+    "Guerrero","Hidalgo","Zaragoza",
+    "Morelos","Villa Unión",
+    "Allende","Jiménez","Juárez"
+  ],
+
+  "Carbonífera": [
+    "Sabinas","San Juan de Sabinas",
+    "Múzquiz","Progreso"
+  ],
+
+  "Centro": [
+    "Monclova","Frontera","Castaños",
+    "Candela","Abasolo","Escobedo",
+    "Gral. Cepeda","San Buenaventura",
+    "Nadadores","Lamadrid","Sacramento",
+    "Ocampo","Cuatrociénegas"
+  ],
+
+  "Laguna": [
+    "Torreón","Matamoros","San Pedro",
+    "Francisco I. Madero","Viesca",
+    "Sierra Mojada"
+  ],
+
+  "Sureste": [
+    "Saltillo","Ramos Arizpe",
+    "Arteaga","Parras"
+  ]
 };
 
-// ---------------- OPEN-METEO ----------------
+// ---------------- API OPEN-METEO ----------------
 async function getWeather(lat, lon) {
   const url =
     `https://api.open-meteo.com/v1/forecast` +
