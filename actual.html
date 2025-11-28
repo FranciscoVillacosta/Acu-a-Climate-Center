@@ -36,6 +36,17 @@ body { font-family:Arial,sans-serif; background:#eef2f3; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
+// ---------------- REGIONES Y MUNICIPIOS ----------------
+const regiones = {
+  "Sureste": ["Arteaga","Gral. Cepeda","Parras","Ramos Arizpe","Saltillo"],
+  "Laguna": ["Francisco I. Madero","Matamoros","San Pedro","Torreón","Viesca"],
+  "Desierto": ["Abasolo","Candela","Castaños","Cuatrociénegas","Escobedo","Frontera",
+               "Lamadrid","Monclova","Nadadores","Ocampo","San Buenaventura","Sacramento","Sierra Mojada"],
+  "Carbonífera": ["Juárez","Múzquiz","Progreso","Sabinas","San Juan de Sabinas"],
+  "Norte": ["Acuña","Allende","Guerrero","Hidalgo","Jiménez","Morelos","Nava",
+            "Piedras Negras","Villa Unión","Zaragoza"]
+};
+
 const municipios = [
  {n:"Abasolo",lat:27.2,lon:-101.4}, {n:"Acuña",lat:29.3,lon:-101.0}, {n:"Allende",lat:28.3,lon:-100.8},
  {n:"Arteaga",lat:25.43,lon:-100.85}, {n:"Candela",lat:26.8,lon:-100.7}, {n:"Castaños",lat:26.8,lon:-101.4},
@@ -52,13 +63,14 @@ const municipios = [
  {n:"Villa Unión",lat:28.22,lon:-100.72}, {n:"Zaragoza",lat:28.48,lon:-100.92}
 ];
 
+// ---------------- SELECT MUNICIPIOS ----------------
 let select = document.getElementById("municipio");
 select.innerHTML = "<option value=''>Selecciona un municipio…</option>" +
  municipios.map(m=>`<option data-lat='${m.lat}' data-lon='${m.lon}'>${m.n}</option>`).join("");
 
 let lastData = {};
 
-// ------------------ SELECCIONAR MUNICIPIO ------------------
+// ---------------- SELECCIONAR MUNICIPIO ----------------
 select.addEventListener("change", async ()=>{
  let opt = select.options[select.selectedIndex];
  if(!opt.value) return;
@@ -76,7 +88,7 @@ select.addEventListener("change", async ()=>{
  status.innerText = `Datos de ${opt.value} cargados.`;
 });
 
-// ------------------ RENDER CLIMA ACTUAL ------------------
+// ---------------- RENDER CLIMA ACTUAL ----------------
 function renderCurrent(name, data){
  const c = data.current_weather;
  const horaIndex = data.hourly.time.indexOf(c.time);
@@ -90,7 +102,7 @@ function renderCurrent(name, data){
  </div>`;
 }
 
-// ------------------ EXPORT TODOS ------------------
+// ---------------- FETCH TODOS ----------------
 async function fetchAllCurrent(){
  const results = [];
  for(const m of municipios){
@@ -102,45 +114,63 @@ async function fetchAllCurrent(){
  return results;
 }
 
+// ---------------- EXPORTAR EXCEL POR REGIONES ----------------
 async function exportExcelAll(){
  const allData = await fetchAllCurrent();
  const wb = XLSX.utils.book_new();
 
- allData.forEach(item=>{
-   const c = item.data.current_weather;
-   const idx = item.data.hourly.time.indexOf(c.time);
-   const probLluvia = idx!==-1 ? item.data.hourly.precipitation_probability[idx] : 0;
-   const arr = [["Temperatura °C","Viento km/h","Probabilidad de lluvia %"],[c.temperature,c.windspeed,probLluvia]];
-   const ws = XLSX.utils.aoa_to_sheet(arr);
-   XLSX.utils.book_append_sheet(wb,ws,item.municipio);
- });
+ for(const region in regiones){
+   const rows = [["Municipio","Temperatura °C","Viento km/h","Prob. lluvia %"]];
+   regiones[region].forEach(muni=>{
+     const item = allData.find(x=>x.municipio === muni);
+     if(!item) return;
+     const c = item.data.current_weather;
+     const idx = item.data.hourly.time.indexOf(c.time);
+     const prob = idx!==-1 ? item.data.hourly.precipitation_probability[idx] : 0;
+     rows.push([muni,c.temperature,c.windspeed,prob]);
+   });
+   const ws = XLSX.utils.aoa_to_sheet(rows);
+   XLSX.utils.book_append_sheet(wb,ws,region);
+ }
 
- XLSX.writeFile(wb,"clima_actual_todos_municipios.xlsx");
+ XLSX.writeFile(wb,"clima_diario.xlsx");
 }
 
+// ---------------- EXPORTAR PDF POR REGIONES ----------------
 async function exportPDFAll(){
  const allData = await fetchAllCurrent();
  const { jsPDF } = window.jspdf;
  const pdf = new jsPDF();
  let y = 10;
- pdf.setFontSize(18);
- pdf.text("Clima Actual – Todos los Municipios",10,y); y+=10;
 
- allData.forEach(item=>{
-   const c = item.data.current_weather;
-   const idx = item.data.hourly.time.indexOf(c.time);
-   const probLluvia = idx!==-1 ? item.data.hourly.precipitation_probability[idx] : 0;
+ pdf.setFontSize(20);
+ pdf.text("Clima Actual – Regiones de Coahuila",10,y);
+ y+=15;
 
-   pdf.setFontSize(14);
-   pdf.text(item.municipio,10,y); y+=8;
-   pdf.setFontSize(12);
-   pdf.text(`Temperatura: ${c.temperature}°C`,10,y); y+=6;
-   pdf.text(`Viento: ${c.windspeed} km/h`,10,y); y+=6;
-   pdf.text(`Probabilidad de lluvia: ${probLluvia}%`,10,y); y+=10;
-   if(y>280){pdf.addPage(); y=10;}
- });
+ for(const region in regiones){
+   pdf.setFontSize(16);
+   pdf.text(region,10,y);
+   y+=10;
 
- pdf.save("clima_actual_todos_municipios.pdf");
+   regiones[region].forEach(muni=>{
+     const item = allData.find(x=>x.municipio === muni);
+     if(!item) return;
+     const c = item.data.current_weather;
+     const idx = item.data.hourly.time.indexOf(c.time);
+     const prob = idx!==-1 ? item.data.hourly.precipitation_probability[idx] : 0;
+
+     pdf.setFontSize(12);
+     pdf.text(`${muni}:  Temp ${c.temperature}°C  | Viento ${c.windspeed} km/h  | Lluvia ${prob}%`,10,y);
+     y+=8;
+
+     if(y>280){ pdf.addPage(); y=10; }
+   });
+
+   y+=8;
+   if(y>280){ pdf.addPage(); y=10; }
+ }
+
+ pdf.save("clima_diario.pdf");
 }
 </script>
 </body>
