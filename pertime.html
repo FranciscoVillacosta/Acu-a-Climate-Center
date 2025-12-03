@@ -38,6 +38,19 @@ th, td { border:1px solid #ccc; padding:6px; text-align:center; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
+
+// ------------------ FECHA Y HORA ------------------
+function getDateTimeString() {
+    const now = new Date();
+    const fecha = now.toISOString().split("T")[0];
+    const hora = now.toTimeString().split(" ")[0].replace(/:/g, "-");
+    return `${fecha}_${hora}`;
+}
+
+function getDateTimeHuman() {
+    return new Date().toLocaleString();
+}
+
 // ------------------ MUNICIPIOS ------------------
 const municipios = [
  {n:"Abasolo",lat:27.2,lon:-101.4}, {n:"Acuña",lat:29.3,lon:-101.0}, {n:"Allende",lat:28.3,lon:-100.8},
@@ -57,11 +70,11 @@ const municipios = [
 
 // ------------------ REGIONES ------------------
 const regiones = {
-"Sureste": ["Arteaga","Gral. Cepeda","Parras","Ramos Arizpe","Saltillo"],
-"Laguna": ["Francisco I. Madero","Matamoros","San Pedro","Torreón","Viesca"],
-"Desierto": ["Abasolo","Candela","Castaños","Cuatrociénegas","Escobedo","Frontera","Lamadrid","Monclova","Nadadores","Ocampo","San Buenaventura","Sacramento","Sierra Mojada"],
-"Carbonífera": ["Juárez","Múzquiz","Progreso","Sabinas","San Juan de Sabinas"],
-"Norte": ["Acuña","Allende","Guerrero","Hidalgo","Jiménez","Morelos","Nava","Piedras Negras","Villa Unión","Zaragoza"]
+ "Sureste": ["Arteaga","Gral. Cepeda","Parras","Ramos Arizpe","Saltillo"],
+ "Laguna": ["Francisco I. Madero","Matamoros","San Pedro","Torreón","Viesca"],
+ "Desierto": ["Abasolo","Candela","Castaños","Cuatro Ciénegas","Escobedo","Frontera","Lamadrid","Monclova","Nadadores","Ocampo","San Buenaventura","Sacramento","Sierra Mojada"],
+ "Carbonífera": ["Juárez","Múzquiz","Progreso","Sabinas","San Juan de Sabinas"],
+ "Norte": ["Acuña","Allende","Guerrero","Hidalgo","Jiménez","Morelos","Nava","Piedras Negras","Villa Unión","Zaragoza"]
 };
 
 // ------------------ SELECT MUNICIPIOS ------------------
@@ -125,7 +138,7 @@ async function fetchAllHourly(){
  return results;
 }
 
-// ------------------ EXPORT EXCEL (UNA HOJA POR REGIÓN) ------------------
+// ------------------ EXPORT EXCEL ------------------
 async function exportExcelHoursAll(){
  const allData = await fetchAllHourly();
  const wb = XLSX.utils.book_new();
@@ -159,20 +172,37 @@ async function exportExcelHoursAll(){
    XLSX.utils.book_append_sheet(wb, ws, region);
  }
 
- XLSX.writeFile(wb, "clima_horas_por_region.xlsx");
+ // ------------------ AÑADIR FECHA Y HORA ------------------
+ const infoSheet = XLSX.utils.aoa_to_sheet([
+   ["Fecha y hora de descarga:"],
+   [getDateTimeHuman()]
+ ]);
+ XLSX.utils.book_append_sheet(wb, infoSheet, "Info");
+
+ XLSX.writeFile(wb, `clima_horas_por_region_${getDateTimeString()}.xlsx`);
 }
 
-// ------------------ EXPORT PDF POR REGIÓN ------------------
+// ------------------ EXPORT PDF ------------------
 async function exportPDFHoursAll(){
  const allData = await fetchAllHourly();
  const { jsPDF } = window.jspdf;
  const pdf = new jsPDF();
  let y = 10;
 
+ // ------------------ FECHA AL PRINCIPIO ------------------
+ pdf.setFontSize(16);
+ pdf.text("Fecha y hora de descarga:", 10, y);
+ y += 8;
+ pdf.setFontSize(12);
+ pdf.text(getDateTimeHuman(), 10, y);
+ y += 12;
+
+ // ------------------ TÍTULO ------------------
  pdf.setFontSize(18);
  pdf.text("Clima Horario por Regiones", 10, y);
  y += 12;
 
+ // ------------------ CONTENIDO ------------------
  for (const region in regiones) {
    pdf.setFontSize(16);
    pdf.text(region, 10, y);
@@ -204,11 +234,14 @@ async function exportPDFHoursAll(){
    }
 
    pdf.addPage();
-   y = 10;
+   y = 20; // evitar sobrescribir la fecha
  }
 
- pdf.save("clima_horas_por_regiones.pdf");
+ // ------------------ GUARDAR ------------------
+ pdf.save(`clima_horas_por_regiones_${getDateTimeString()}.pdf`);
 }
+
+
 </script>
 
 
