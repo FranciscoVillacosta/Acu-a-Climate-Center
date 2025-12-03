@@ -36,6 +36,17 @@ body { font-family:Arial,sans-serif; background:#eef2f3; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
+
+// ----------------------------------
+//  🕒 FUNCIÓN FECHA + HORA DESCARGA
+// ----------------------------------
+function getDateTimeString() {
+    const now = new Date();
+    const fecha = now.toISOString().split("T")[0];       // YYYY-MM-DD
+    const hora = now.toTimeString().split(" ")[0].replace(/:/g, "-"); // HH-MM-SS
+    return `${fecha} ${hora}`;
+}
+
 // ---------------- REGIONES Y MUNICIPIOS ----------------
 const regiones = {
   "Sureste": ["Arteaga","Gral. Cepeda","Parras","Ramos Arizpe","Saltillo"],
@@ -114,37 +125,47 @@ async function fetchAllCurrent(){
  return results;
 }
 
-// ---------------- EXPORTAR EXCEL POR REGIONES ----------------
+// ---------------- exportar excel ----------------
 async function exportExcelAll(){
  const allData = await fetchAllCurrent();
  const wb = XLSX.utils.book_new();
+ const fechaHora = getDateTimeString();
 
  for(const region in regiones){
-   const rows = [["Municipio","Temperatura °C","Viento km/h","Prob. lluvia %"]];
+   const rows = [["Municipio","Temperatura °C","Viento km/h","Prob. lluvia %","Fecha de descarga"]];
+
    regiones[region].forEach(muni=>{
      const item = allData.find(x=>x.municipio === muni);
      if(!item) return;
      const c = item.data.current_weather;
      const idx = item.data.hourly.time.indexOf(c.time);
      const prob = idx!==-1 ? item.data.hourly.precipitation_probability[idx] : 0;
-     rows.push([muni,c.temperature,c.windspeed,prob]);
+
+     rows.push([muni,c.temperature,c.windspeed,prob,fechaHora]);
    });
+
    const ws = XLSX.utils.aoa_to_sheet(rows);
    XLSX.utils.book_append_sheet(wb,ws,region);
  }
 
- XLSX.writeFile(wb,"clima_diario.xlsx");
+ XLSX.writeFile(wb,`clima_diario_${fechaHora}.xlsx`);
 }
 
-// ---------------- EXPORTAR PDF POR REGIONES ----------------
+// ---------------- exportar pdf ----------------
 async function exportPDFAll(){
  const allData = await fetchAllCurrent();
+ const fechaHora = getDateTimeString();
+
  const { jsPDF } = window.jspdf;
  const pdf = new jsPDF();
  let y = 10;
 
  pdf.setFontSize(20);
  pdf.text("Clima Actual – Regiones de Coahuila",10,y);
+ y+=10;
+
+ pdf.setFontSize(10);
+ pdf.text(`Fecha y hora de descarga: ${fechaHora}`,10,y);
  y+=15;
 
  for(const region in regiones){
@@ -170,8 +191,9 @@ async function exportPDFAll(){
    if(y>280){ pdf.addPage(); y=10; }
  }
 
- pdf.save("clima_diario.pdf");
+ pdf.save(`clima_diario_${fechaHora}.pdf`);
 }
+
 </script>
 </body>
 </html>
